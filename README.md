@@ -1,4 +1,4 @@
-# CPLfold - COMRADES-guided Pseudoknot LinearFold
+# CPLfold: Chimeric and Pseudoknot-capable Linear-time RNA Secondary Structure Prediction
 
 Two-phase pseudoknot prediction algorithm using LinearFold with experimental COMRADES/PARIS data support.
 
