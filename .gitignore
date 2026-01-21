@@ -10,3 +10,4 @@ build/
 .ipynb_checkpoints/
 .DS_Store
 HotKnots_v2.0/bin/core
+Utils/HotKnots_v2.0/bin/core

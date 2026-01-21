@@ -35,8 +35,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import CPLfold parser
 from CPLfold_parser import BeamCKYParserHyper
 
-# Add HotKnots to path (local directory)
-HOTKNOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "HotKnots_v2.0")
+# Add HotKnots to path (in Utils directory)
+HOTKNOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Utils", "HotKnots_v2.0")
 sys.path.insert(0, HOTKNOTS_DIR)
 from hotknots import HotKnots
 

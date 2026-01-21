@@ -14,15 +14,15 @@ CPLfold/
 │   ├── bpRNA_RFAM_5220.dbn          # Example RNA sequence/structure
 │   ├── bpRNA_RFAM_5220_paris_scores.txt  # PARIS support scores
 │   └── bpRNA_RFAM_5220_paris_scores.npy  # PARIS matrix (numpy)
-├── Utils/                           # Energy parameters and utilities
-│   ├── energy_parameter.py
-│   ├── feature_weight.py
-│   ├── intl11.py, intl21.py, intl22.py
-│   └── ...
-└── HotKnots_v2.0/                   # Pseudoknot energy calculation
-    ├── hotknots.py
-    ├── bin/
-    └── ...
+└── Utils/                           # Energy parameters and utilities
+    ├── energy_parameter.py
+    ├── feature_weight.py
+    ├── intl11.py, intl21.py, intl22.py
+    ├── ...
+    └── HotKnots_v2.0/               # Pseudoknot energy calculation
+        ├── hotknots.py
+        ├── bin/
+        └── ...
 ```
 
 ## Algorithm
