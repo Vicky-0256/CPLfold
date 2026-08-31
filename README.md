@@ -15,11 +15,13 @@ CPLfold/
 │   ├── bpRNA_RFAM_5220_paris_scores.txt  # PARIS support scores
 │   └── bpRNA_RFAM_5220_paris_scores.npy  # PARIS matrix (numpy)
 └── Utils/                           # Energy parameters and utilities
+    ├── hotknots_energy.py           # Standalone Python DP/CC/RE evaluator
+    ├── energy_params/               # Packaged FM363/DP/CC/RE parameter tables
     ├── energy_parameter.py
     ├── feature_weight.py
     ├── intl11.py, intl21.py, intl22.py
     ├── ...
-    └── HotKnots_v2.0/               # Pseudoknot energy calculation
+    └── HotKnots_v2.0/               # Optional upstream source/reference only
         ├── hotknots.py
         ├── bin/
         └── ...
@@ -32,7 +34,7 @@ CPLfold/
 1. **Phase 1**: Generate suboptimal structures using LinearFold
 2. **Phase 2**: For each Phase 1 structure, mask paired positions and fold again
 3. **Merge**: Combine Phase 1 and Phase 2 pairs to form pseudoknots
-4. **Score**: Calculate energy using HotKnots and rank structures
+4. **Score**: Calculate DP/CC/RE energy with the standalone Python evaluator and rank structures
 
 ### Key Parameters
 
@@ -87,6 +89,33 @@ results = two_phase_pseudoknot_fold(
 )
 ```
 
+### Energy-only API
+
+The scoring path neither starts nor imports HotKnots. It loads the eight
+required parameter tables from `Utils/energy_params` and evaluates the complete
+closed-region/Loop/Bands tree in Python:
+
+```python
+from Utils.hotknots_energy import HotKnotsEnergy
+
+result = HotKnotsEnergy().compute_energy(
+    "GGCGCGGCACCGUCCGCGGAACAAACGG",
+    "..(((((..[[[[)))))......]]]]",
+    model="CC09",
+)
+print(result["energy"], result["breakdown"])
+```
+
+The evaluator supports pseudoknot-free and H-type structures as well as nested
+secondary structures inside pseudoloops, nested pseudoknots, multi-band chains,
+kissing pseudoknots, and multiloops spanning a band. DP09, CC09, and RE follow
+the original Loop/Bands scoring behavior; CC uses its defined DP fallback for
+topologies outside its two-stem entropy table.
+
+See [the extraction and formula analysis](docs/hotknots_energy_analysis.md) for
+the parameter layout, DP09/CC09/RE equations, supported topology, and reference
+validation results.
+
 ### PARIS Data Processing
 
 Extract PARIS support matrix from BAM files (based on IRIS method):
@@ -118,12 +147,16 @@ Linear-time RNA secondary structure prediction algorithm.
 - Source: https://github.com/LinearFold/LinearFold
 - Reference: Huang, L., Zhang, H., Deng, D., Zhao, K., Liu, K., Hendrix, D. A., & Mathews, D. H. (2019). LinearFold: linear-time approximate RNA folding by 5'-to-3' dynamic programming and beam search. Bioinformatics, 35(14), i295-i304.
 
-### HotKnots
-Pseudoknot energy calculation.
+### DP/CC/RE model provenance
+
+The optional `Utils/HotKnots_v2.0` tree is retained only as an upstream
+reference and differential-test oracle. CPLfold does not import, compile,
+execute, or read data from it: the Python implementation and its packaged
+parameter subset are sufficient at runtime.
 - Source: https://www.cs.ubc.ca/labs/algorithms/Software/HotKnots/
 - Reference: Ren, J., Rastegari, B., Condon, A., & Hoos, H. H. (2005). HotKnots: Heuristic prediction of RNA secondary structures including pseudoknots. RNA, 11(10), 1494-1504.
 
-## Energy Models (HotKnots)
+## Pseudoknot Energy Models
 
 Available energy models:
 - `DP09` - Dirks & Pierce 2009 (recommended)
@@ -131,6 +164,9 @@ Available energy models:
 - `CC06` - Cao & Chen 2006
 - `CC09` - Cao & Chen 2009
 - `RE` - Rivas & Eddy
+
+`DP09`, `CC09`, and `RE` are covered by regression vectors from the original
+`computeEnergy`; `DP03` and `CC06` remain available for compatibility.
 
 ## Requirements
 

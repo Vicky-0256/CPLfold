@@ -9,7 +9,7 @@ Algorithm:
 1. Phase 1: Generate suboptimal structures using LinearFold with bonus matrix
 2. Phase 2: For each Phase 1 structure, mask paired positions and fold again
 3. Merge Phase 1 and Phase 2 structures to form pseudoknots
-4. Calculate energy using HotKnots and rank by effective energy
+4. Calculate energy with the standalone Python DP/CC/RE models and rank by effective energy
 
 Key Parameters:
 - alpha: Scaling factor for COMRADES/PARIS bonus matrix (0.0-1.0)
@@ -35,10 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import CPLfold parser
 from CPLfold_parser import BeamCKYParserHyper
 
-# Add HotKnots to path (in Utils directory)
-HOTKNOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Utils", "HotKnots_v2.0")
-sys.path.insert(0, HOTKNOTS_DIR)
-from hotknots import HotKnots
+from Utils.hotknots_energy import HotKnotsEnergy
 
 
 def structure_to_constraint(structure: str) -> str:
@@ -232,26 +229,22 @@ def phase2_fold(seq: str, parser: BeamCKYParserHyper,
     return None, 0.0
 
 
-def compute_energy_hotknots(seq: str, structure: str, hk: HotKnots,
-                             model: str = "DP09") -> Optional[float]:
+def compute_energy_hotknots(seq: str, structure: str, hk: HotKnotsEnergy,
+                             model: str = "DP09") -> float:
     """
-    Compute structure energy using HotKnots.
+    Compute structure energy using the pure-Python HotKnots extraction.
 
     Args:
         seq: RNA sequence
         structure: Dot-bracket structure (can include [] for pseudoknots)
-        hk: HotKnots instance
+        hk: HotKnotsEnergy instance
         model: Energy model (DP03, DP09, CC06, CC09, RE)
 
     Returns:
-        Energy in kcal/mol, or None if computation failed
+        Energy in kcal/mol
     """
-    try:
-        result = hk.compute_energy(seq, structure, model=model)
-        return result.get('energy')
-    except Exception as e:
-        print(f"Warning: Energy computation failed for {structure}: {e}")
-        return None
+    result = hk.compute_energy(seq, structure, model=model)
+    return float(result['energy'])
 
 
 def output_results(all_structures: List[Dict], seq: str,
@@ -387,7 +380,7 @@ def two_phase_pseudoknot_fold(seq: str,
         energy_delta: Energy range for suboptimal structures
         max_phase1: Maximum Phase 1 structures to process
         max_phase2: Maximum Phase 2 structures per Phase 1
-        energy_model: HotKnots energy model (DP03, DP09, CC06, CC09, RE)
+        energy_model: Pseudoknot energy model (DP03, DP09, CC06, CC09, RE)
         output_file: Optional output file path
         verbose: Whether to print progress
         lv: Whether to use Vienna mode (True) or CONTRAfold mode (False)
@@ -430,8 +423,8 @@ def two_phase_pseudoknot_fold(seq: str,
         parser.set_alpha(alpha)
         parser.set_bonus_matrix(bonus_matrix, len(seq))
 
-    # Initialize HotKnots
-    hk = HotKnots(HOTKNOTS_DIR)
+    # Load CPLfold's packaged DP/CC/RE parameters once.
+    hk = HotKnotsEnergy()
 
     all_structures = []
     seen_structures = set()  # Avoid duplicates
@@ -470,8 +463,7 @@ def two_phase_pseudoknot_fold(seq: str,
         })
 
         if verbose:
-            energy_str = f"{energy1:.2f}" if energy1 is not None else "N/A"
-            print(f"  Energy: {energy_str} kcal/mol")
+            print(f"  Energy: {energy1:.2f} kcal/mol")
 
         # Phase 2: Generate constraint and fold
         constraint = structure_to_constraint(struct1)
@@ -501,19 +493,18 @@ def two_phase_pseudoknot_fold(seq: str,
                 if verbose:
                     print(f"  Merged structure: {merged}")
 
-                if merged and merged not in seen_structures:
-                    seen_structures.add(merged)
-
+                if (
+                    merged
+                    and merged not in seen_structures
+                ):
                     # Calculate merged structure energy
                     energy_merged = compute_energy_hotknots(seq, merged, hk, energy_model)
+                    seen_structures.add(merged)
 
                     # Calculate effective energy for sorting
                     # effective_energy = pseudoknot_energy + beta * phase1_energy
                     # Since energies are negative, this makes pseudoknots more favorable
-                    if energy_merged is not None and energy1 is not None:
-                        effective_energy = energy_merged + beta * energy1
-                    else:
-                        effective_energy = energy_merged
+                    effective_energy = energy_merged + beta * energy1
 
                     all_structures.append({
                         'structure': merged,
@@ -566,9 +557,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python pseudoknot_linearfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG
-  python pseudoknot_linearfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -o results.txt
-  python pseudoknot_linearfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -b 200 -d 10.0
+  python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG
+  python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -o results.txt
+  python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -b 200 -d 10.0
 
 Energy Models:
   DP03 - Dirks & Pierce 2003
@@ -603,7 +594,7 @@ Beta Parameter:
                         help='Output file path')
     parser.add_argument('-m', '--model', type=str, default='DP09',
                         choices=['DP03', 'DP09', 'CC06', 'CC09', 'RE'],
-                        help='HotKnots energy model (default: DP09)')
+                        help='Pseudoknot energy model (default: DP09)')
     parser.add_argument('--beta', type=float, default=0.0,
                         help='Pseudoknot energy bonus factor (default: 0.0). '
                              'For pseudoknots, effective_energy = pk_energy + beta * phase1_energy. '
