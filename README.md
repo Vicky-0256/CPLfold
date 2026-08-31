@@ -20,11 +20,7 @@ CPLfold/
     ├── energy_parameter.py
     ├── feature_weight.py
     ├── intl11.py, intl21.py, intl22.py
-    ├── ...
-    └── HotKnots_v2.0/               # Optional upstream source/reference only
-        ├── hotknots.py
-        ├── bin/
-        └── ...
+    └── ...
 ```
 
 ## Algorithm
@@ -149,10 +145,9 @@ Linear-time RNA secondary structure prediction algorithm.
 
 ### DP/CC/RE model provenance
 
-The optional `Utils/HotKnots_v2.0` tree is retained only as an upstream
-reference and differential-test oracle. CPLfold does not import, compile,
-execute, or read data from it: the Python implementation and its packaged
-parameter subset are sufficient at runtime.
+The former `Utils/HotKnots_v2.0` source tree has been removed from this branch.
+CPLfold uses only the Python implementation and its packaged parameter subset;
+the upstream project is cited below solely as model and validation provenance.
 - Source: https://www.cs.ubc.ca/labs/algorithms/Software/HotKnots/
 - Reference: Ren, J., Rastegari, B., Condon, A., & Hoos, H. H. (2005). HotKnots: Heuristic prediction of RNA secondary structures including pseudoknots. RNA, 11(10), 1494-1504.
 

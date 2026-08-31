@@ -18,7 +18,7 @@ CPLfold.py
 新的 `Utils/hotknots_energy.py` 从独立的 `Utils/energy_params` 读取所需参数子集并
 完成上述计算，不再导入 HotKnots 包、读取其目录或启动原生可执行文件。仓库里原
 `computeEnergy` 是 AArch64 ELF；Python 版也消除了运行机器与二进制架构必须一致的
-问题。
+问题。完成差分验证后，`Utils/HotKnots_v2.0` 已从独立实现分支删除。
 
 ## 2. 完整 closed-region / Loop / Bands 树
 
