@@ -1,11 +1,17 @@
-# CPLfold 独立伪结能量计算：HotKnots 抽取与 Python 化分析
+# 基于 HotKnots 2.0 的 CPLfold 独立伪结能量计算
 
-## 1. CPLfold 实际使用了什么
+> **来源与“独立”的含义：** 本实现是基于 HotKnots 2.0 能量计算源码和
+> 参数表完成的 Python 移植与重构，不是与 HotKnots 无关的 clean-room 实现，
+> 也没有重新拟合 DP/CC/RE 参数。本文的“独立”仅表示 CPLfold **运行时**
+> 不需要 HotKnots 的包装器、源码树、共享库或原生可执行文件。
+
+## 1. 与 HotKnots 的关系
 
 重构前的 CPLfold 通过当时仓库中的 `Utils/HotKnots_v2.0/hotknots.py` 启动
 `bin/computeEnergy`。它只调用 `compute_energy()` 给一个已知结构打分，完全没有调用
-HotKnots 的 hotspot 生成、启发式搜索、候选结构扩展或绘图代码。因此独立实现实际
-需要的是：
+HotKnots 的 hotspot 生成、启发式搜索、候选结构扩展或绘图代码。因此本次
+工作不是移植整个 HotKnots 预测器，而是从其源码和参数中移植、重构 CPLfold
+需要的能量计算部分：
 
 ```text
 CPLfold.py
@@ -16,15 +22,27 @@ CPLfold.py
      -> exterior dangling-end 修正
 ```
 
-当前 `Utils/hotknots_energy.py` 从独立的 `Utils/energy_params` 读取所需参数子集并
-完成上述计算，不再导入 HotKnots 包、读取其目录或启动原生可执行文件。迁移前捆绑的
-`computeEnergy` 是 AArch64 ELF；Python 版也消除了运行机器与二进制架构必须一致的
-问题。完成差分验证后，整个 `Utils/HotKnots_v2.0` 已从本分支删除。
+具体来源与处理如下：
+
+| CPLfold 部分 | HotKnots 2.0 来源及处理 |
+|---|---|
+| closed-region/Loop/Bands 结构分解 | 基于 `LE/Stack.cpp`、`Loop.cpp`、`LoopList.cpp` 和 `Bands.cpp` 的逻辑移植并重构为 Python |
+| 普通二级结构能量 | 基于 HotKnots 捆绑的 SimFold FM363 计分代码和参数 |
+| DP/CC/RE 伪结能量 | 基于 HotKnots `Loop`/`LoopList`/`paramsPK` 的能量计算语义 |
+| 八个参数文件 | 来自 HotKnots 2.0 `bin/params`；仅规范化了部分换行和尾随空格，数值不变 |
+| 候选结构生成 | 仍由 CPLfold 的两阶段 LinearFold 流程完成，不使用 HotKnots 的 hotspot/启发式搜索 |
+
+当前 `Utils/hotknots_energy.py` 从 `Utils/energy_params` 读取上述参数子集并在
+Python 中完成计算。CPLfold 的默认路径不导入 HotKnots 包、不读取其源码目录，
+也不启动原生可执行文件。迁移前捆绑的 `computeEnergy` 是 AArch64 ELF；
+Python 版也消除了运行机器与二进制架构必须一致的
+问题。完成差分验证后，整个 `Utils/HotKnots_v2.0` 已从本分支删除；这个
+删除只是去除不必要的运行时组件，不改变上述代码和参数来源。
 
 ## 2. 完整 closed-region / Loop / Bands 树
 
-只按括号类型寻找两条 stem 只能覆盖简单 H 型。完整实现采用与原 `Stack`、`Loop`
-和 `Bands` 相同的结构语义：
+只按括号类型寻找两条 stem 只能覆盖简单 H 型。完整实现移植并重构了 HotKnots
+原 `Stack`、`Loop` 和 `Bands` 的结构语义：
 
 1. 从左到右扫描所有成对端点，形成最小 closed region；交叉 pair 会被合并到同一
    region，完整嵌套的 region 则保持父子关系。
@@ -40,7 +58,8 @@ CPLfold.py
 
 ## 3. 公共的 FM363 能量
 
-DP、CC 使用各自参数文件的前 363 项；RE 使用
+`Utils/energy_params` 中的八个表来自 HotKnots 2.0 发布包的 `bin/params`，
+本工作没有重新拟合其数值。DP、CC 使用各自参数文件的前 363 项；RE 使用
 `turner_parameters_fm363_constrdangles.txt`。这些参数重建了 SimFold 的：
 
 - 21 个对称 stack 参数；
@@ -210,6 +229,7 @@ CC 的 Python double 与原 C++ float 在未格式化内部值上最多约有 `2
 其输出已固化为 `tests/test_hotknots_energy.py` 中的参考向量。
 
 当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，19 个测试仍全部通过。
+这证明的是“无 HotKnots 运行时依赖”，而不是“能量实现与 HotKnots 无来源关系”。
 README 示例序列还通过了真实 Numba JIT 的两阶段端到端运行，并生成、计分和排序了
 三个 pseudoknot 候选。日常验证命令为：
 
@@ -243,3 +263,16 @@ python -m Utils.hotknots_energy \
   --structure '..(((((..[[[[)))))......]]]]' \
   -m DP09
 ```
+
+## 11. HotKnots 归属与许可说明
+
+HotKnots 2.0 的 README 将原始实现归属于 Jihong Ren 和 Baharak
+Rastegari，并说明 Cristina Pop 与 Mirela Andronescu 也进行了修改。
+本 Python 能量计算器基于该项目的能量计算代码和参数，因此应保留
+上游归属。相关 HotKnots 源码文件头声明了 GNU GPL version 2 or later；
+再分发这个派生实现时应同时遵循适用的上游许可条款。
+
+- HotKnots 2.0: https://www.cs.ubc.ca/labs/algorithms/Software/HotKnots/
+- Ren, J., Rastegari, B., Condon, A., & Hoos, H. H. (2005). *HotKnots:
+  Heuristic prediction of RNA secondary structures including pseudoknots*.
+  RNA, 11(10), 1494–1504.

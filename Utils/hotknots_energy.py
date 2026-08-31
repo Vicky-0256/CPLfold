@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
-"""Standalone Python implementation of the HotKnots 2.0 energy models.
+"""Python port of the energy-calculation portion of HotKnots 2.0.
 
 The HotKnots executable contains both a structure search algorithm and an
-energy evaluator.  CPLfold only needs the latter.  This module implements the
-FM363 secondary-structure terms and the DP, CC, and RE pseudoknot terms without
-starting a subprocess or loading a compiled HotKnots library.
+energy evaluator.  CPLfold only needs the latter.  This module was built by
+porting and refactoring the energy-relevant HotKnots ``Stack``/``Loop``/
+``LoopList``/``Bands`` logic, its bundled SimFold behavior, and its DP, CC, and
+RE scoring paths into Python.  The accompanying tables in ``energy_params``
+come from the HotKnots 2.0 parameter distribution; this is not an independently
+fitted or clean-room energy model.
 
 The closed-region, loop, and band decomposition is implemented here as well,
 so nested secondary structures, chained/multi-band pseudoknots, kissing
 pseudoknots, and pseudoknots nested inside other pseudoknots do not require the
-HotKnots source tree or executable at runtime.
+HotKnots source tree or executable at runtime.  "Standalone" therefore refers
+only to runtime dependencies, not to the implementation's provenance.
+
+The HotKnots 2.0 README credits Jihong Ren and Baharak Rastegari for the
+original implementation and Cristina Pop and Mirela Andronescu for subsequent
+modifications.  Relevant upstream source headers carry GNU GPL version 2 or
+later notices; see the repository README for attribution and provenance.
 """
 
 from __future__ import annotations
@@ -1065,7 +1074,7 @@ def _dp_parameters(values: Sequence[float]) -> Dict[str, float]:
 
 
 class HotKnotsEnergy:
-    """Standalone energy-only replacement for ``HotKnots.compute_energy``."""
+    """Runtime-standalone Python port of ``HotKnots.compute_energy`` behavior."""
 
     MODELS = {
         "DP03": ("parameters_DP03.txt", "DP"),
@@ -1926,7 +1935,9 @@ def compute_energy(sequence: str, structure: str, model: str = "DP09") -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Standalone Python DP/CC/RE energy evaluator")
+    parser = argparse.ArgumentParser(
+        description="Runtime-standalone Python port of the HotKnots DP/CC/RE energy evaluator"
+    )
     parser.add_argument("-s", "--sequence", required=True)
     parser.add_argument("--structure", required=True)
     parser.add_argument("-m", "--model", default="DP09", choices=tuple(HotKnotsEnergy.MODELS))

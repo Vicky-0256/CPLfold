@@ -9,7 +9,7 @@ Algorithm:
 1. Phase 1: Generate suboptimal structures using LinearFold with bonus matrix
 2. Phase 2: For each Phase 1 structure, mask paired positions and fold again
 3. Merge Phase 1 and Phase 2 structures to form pseudoknots
-4. Calculate energy with the standalone Python DP/CC/RE models and rank by effective energy
+4. Calculate energy with the HotKnots-derived Python DP/CC/RE evaluator and rank by effective energy
 
 Key Parameters:
 - alpha: Scaling factor for COMRADES/PARIS bonus matrix (0.0-1.0)
@@ -18,7 +18,9 @@ Key Parameters:
 Dependencies:
 - LinearFold: https://github.com/LinearFold/LinearFold
   Huang et al. (2019) Bioinformatics 35(14):i295-i304
-- HotKnots: https://www.cs.ubc.ca/labs/algorithms/Software/HotKnots/
+- HotKnots 2.0: source code and parameters for the Python energy-calculation port;
+  its structure-search algorithm and native executable are not runtime dependencies
+  https://www.cs.ubc.ca/labs/algorithms/Software/HotKnots/
   Ren et al. (2005) RNA 11(10):1494-1504
 
 Author: Ke Wang
@@ -232,7 +234,10 @@ def phase2_fold(seq: str, parser: BeamCKYParserHyper,
 def compute_energy_hotknots(seq: str, structure: str, hk: HotKnotsEnergy,
                              model: str = "DP09") -> float:
     """
-    Compute structure energy using the pure-Python HotKnots extraction.
+    Compute structure energy using the Python port of HotKnots' energy evaluator.
+
+    The implementation is derived from HotKnots 2.0 energy-calculation code and
+    parameters, but it does not invoke the HotKnots package or executable.
 
     Args:
         seq: RNA sequence
@@ -567,6 +572,10 @@ Energy Models:
   CC06 - Cao & Chen 2006
   CC09 - Cao & Chen 2009
   RE   - Rivas & Eddy
+
+Energy Implementation:
+  Python port/refactoring based on HotKnots 2.0 energy-calculation code
+  and parameter files; no HotKnots executable is invoked at runtime.
 
 Beta Parameter:
   The --beta parameter controls pseudoknot preference in ranking.

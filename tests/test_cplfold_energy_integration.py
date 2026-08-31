@@ -1,4 +1,4 @@
-"""Tests for CPLfold's standalone energy-evaluator integration."""
+"""Tests for CPLfold's runtime-standalone, HotKnots-derived energy evaluator."""
 
 import importlib
 import sys
