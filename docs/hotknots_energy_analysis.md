@@ -1,10 +1,11 @@
-# HotKnots 能量计算抽取与 Python 化分析
+# CPLfold 独立伪结能量计算：HotKnots 抽取与 Python 化分析
 
 ## 1. CPLfold 实际使用了什么
 
-CPLfold 原先通过 `Utils/HotKnots_v2.0/hotknots.py` 启动
+重构前的 CPLfold 通过当时仓库中的 `Utils/HotKnots_v2.0/hotknots.py` 启动
 `bin/computeEnergy`。它只调用 `compute_energy()` 给一个已知结构打分，完全没有调用
-HotKnots 的 hotspot 生成、启发式搜索、候选结构扩展或绘图代码。因此需要保留的是：
+HotKnots 的 hotspot 生成、启发式搜索、候选结构扩展或绘图代码。因此独立实现实际
+需要的是：
 
 ```text
 CPLfold.py
@@ -15,10 +16,10 @@ CPLfold.py
      -> exterior dangling-end 修正
 ```
 
-新的 `Utils/hotknots_energy.py` 从独立的 `Utils/energy_params` 读取所需参数子集并
-完成上述计算，不再导入 HotKnots 包、读取其目录或启动原生可执行文件。仓库里原
+当前 `Utils/hotknots_energy.py` 从独立的 `Utils/energy_params` 读取所需参数子集并
+完成上述计算，不再导入 HotKnots 包、读取其目录或启动原生可执行文件。迁移前捆绑的
 `computeEnergy` 是 AArch64 ELF；Python 版也消除了运行机器与二进制架构必须一致的
-问题。完成差分验证后，`Utils/HotKnots_v2.0` 已从独立实现分支删除。
+问题。完成差分验证后，整个 `Utils/HotKnots_v2.0` 已从本分支删除。
 
 ## 2. 完整 closed-region / Loop / Bands 树
 
@@ -187,7 +188,8 @@ GU canonical pair。`UnsupportedTopologyError` 仅为旧版调用方保留；上
 
 ## 9. 与原程序的验证
 
-开发时在 x86-64 上重新编译了未改变算法的 HotKnots 2.0，并逐结构比较两列输出：
+移植验证阶段曾在 x86-64 上重新编译未改变算法的 HotKnots 2.0，并逐结构比较两列
+输出。该 oracle 不属于当前分支的运行时或测试依赖：
 
 | 覆盖项 | 比较数 | 结果 |
 |---|---:|---|
@@ -204,13 +206,17 @@ GU canonical pair。`UnsupportedTopologyError` 仅为旧版调用方保留；上
 | 80 个随机复杂结构，2–10 bands，三模型各比较两列 | 480 个数值 | 一致 |
 
 CC 的 Python double 与原 C++ float 在未格式化内部值上最多约有 `2.4e-5 kcal/mol`
-差异；原 `computeEnergy` 打印精度下结果相同。固定参考向量保存在
-`tests/test_hotknots_energy.py`。
+差异；原 `computeEnergy` 打印精度下结果相同。oracle 源码和二进制未保留在本分支，
+其输出已固化为 `tests/test_hotknots_energy.py` 中的参考向量。
 
-运行时独立性也做了隔离验证：只复制 `CPLfold.py`、Python `Utils`、测试和
-`Utils/energy_params` 到不含 `HotKnots_v2.0` 的临时目录，19 个测试全部通过。
+当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，19 个测试仍全部通过。
 README 示例序列还通过了真实 Numba JIT 的两阶段端到端运行，并生成、计分和排序了
-三个 pseudoknot 候选。
+三个 pseudoknot 候选。日常验证命令为：
+
+```bash
+python3 -m pytest -q
+python3 CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -b 20 -n1 3 -n2 2
+```
 
 ## 10. 使用方式
 
