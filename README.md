@@ -2,6 +2,11 @@
 
 Two-phase pseudoknot prediction algorithm using LinearFold with experimental COMRADES/PARIS data support.
 
+Energy scoring is provided by a Python port/refactoring built from the HotKnots
+2.0 energy-calculation source code and parameter files. CPLfold does not use the
+HotKnots heuristic search and does not require HotKnots binaries or libraries at
+runtime; this runtime independence does not change the code and data provenance.
+
 ## Directory Structure
 
 ```
@@ -15,14 +20,12 @@ CPLfold/
 │   ├── bpRNA_RFAM_5220_paris_scores.txt  # PARIS support scores
 │   └── bpRNA_RFAM_5220_paris_scores.npy  # PARIS matrix (numpy)
 └── Utils/                           # Energy parameters and utilities
+    ├── hotknots_energy.py           # Python port of HotKnots energy calculation
+    ├── energy_params/               # Parameter tables from HotKnots 2.0
     ├── energy_parameter.py
     ├── feature_weight.py
     ├── intl11.py, intl21.py, intl22.py
-    ├── ...
-    └── HotKnots_v2.0/               # Pseudoknot energy calculation
-        ├── hotknots.py
-        ├── bin/
-        └── ...
+    └── ...
 ```
 
 ## Algorithm
@@ -32,7 +35,7 @@ CPLfold/
 1. **Phase 1**: Generate suboptimal structures using LinearFold
 2. **Phase 2**: For each Phase 1 structure, mask paired positions and fold again
 3. **Merge**: Combine Phase 1 and Phase 2 pairs to form pseudoknots
-4. **Score**: Calculate energy using HotKnots and rank structures
+4. **Score**: Calculate DP/CC/RE energy with the HotKnots-derived Python evaluator and rank structures
 
 ### Key Parameters
 
@@ -87,6 +90,52 @@ results = two_phase_pseudoknot_fold(
 )
 ```
 
+### Energy-only API
+
+CPLfold's energy calculator is based on the **HotKnots 2.0 source code and
+parameter distribution**. `Utils/hotknots_energy.py` ports and refactors the
+energy-relevant `Stack`/`Loop`/`LoopList`/`Bands` structure decomposition,
+SimFold secondary-structure terms, and DP/CC/RE pseudoknot scoring behavior into
+Python. The eight files in `Utils/energy_params` come from the parameter tables
+distributed with HotKnots 2.0; only formatting such as line endings or trailing
+whitespace was normalized where needed, not the numerical values.
+
+Here, **standalone** means runtime-independent, not independently invented or
+clean-room implemented. The current scoring path does not import the HotKnots
+wrapper, start `computeEnergy`, load a compiled HotKnots library, or require the
+former `Utils/HotKnots_v2.0` source tree. It does, however, remain a Python port
+derived from HotKnots' energy-calculation code and data.
+
+| CPLfold component | Relationship to HotKnots |
+|---|---|
+| Candidate generation | CPLfold's two-phase LinearFold workflow; it does not use the HotKnots hotspot/heuristic search |
+| Structure energy | Python port/refactoring based on HotKnots 2.0 energy-calculation code |
+| Energy parameters | Required tables taken from the HotKnots 2.0 distribution |
+| Runtime | No HotKnots package, source tree, shared library, or executable is required |
+
+The Python API evaluates the complete closed-region/Loop/Bands tree directly:
+
+```python
+from Utils.hotknots_energy import HotKnotsEnergy
+
+result = HotKnotsEnergy().compute_energy(
+    "GGCGCGGCACCGUCCGCGGAACAAACGG",
+    "..(((((..[[[[)))))......]]]]",
+    model="CC09",
+)
+print(result["energy"], result["breakdown"])
+```
+
+The evaluator supports pseudoknot-free and H-type structures as well as nested
+secondary structures inside pseudoloops, nested pseudoknots, multi-band chains,
+kissing pseudoknots, and multiloops spanning a band. DP09, CC09, and RE follow
+the original Loop/Bands scoring behavior; CC uses its defined DP fallback for
+topologies outside its two-stem entropy table.
+
+See [the port, provenance, and formula analysis](docs/hotknots_energy_analysis.md)
+for the source-to-Python relationship, parameter layout, DP09/CC09/RE equations,
+supported topology, and reference validation results.
+
 ### PARIS Data Processing
 
 Extract PARIS support matrix from BAM files (based on IRIS method):
@@ -111,26 +160,46 @@ python example_with_paris.py
 
 This runs CPLfold on bpRNA_RFAM_5220 (snoRNA, 207nt) with PARIS data from 9592 chimeric reads.
 
-## Dependencies
+## Dependencies and provenance
 
 ### LinearFold
+
 Linear-time RNA secondary structure prediction algorithm.
+
 - Source: https://github.com/LinearFold/LinearFold
 - Reference: Huang, L., Zhang, H., Deng, D., Zhao, K., Liu, K., Hendrix, D. A., & Mathews, D. H. (2019). LinearFold: linear-time approximate RNA folding by 5'-to-3' dynamic programming and beam search. Bioinformatics, 35(14), i295-i304.
 
-### HotKnots
-Pseudoknot energy calculation.
+### Relationship to HotKnots 2.0 and attribution
+
+The energy calculator in this branch is derived from the energy-calculation
+portion of HotKnots 2.0 and uses a packaged subset of its parameter files. It is
+not a new independently fitted DP/CC/RE model. The former complete
+`Utils/HotKnots_v2.0` tree was removed only because the HotKnots search code,
+wrapper, native libraries, and executable are not needed at runtime; that
+removal does not change the implementation or parameter provenance described
+above.
+
+The HotKnots 2.0 README credits the original implementation to Jihong Ren and
+Baharak Rastegari, with modifications by Cristina Pop and Mirela Andronescu.
+Relevant upstream source headers contain GNU GPL version 2-or-later notices;
+redistribution of this derived implementation should preserve the upstream
+attribution and comply with the applicable upstream license terms.
+
 - Source: https://www.cs.ubc.ca/labs/algorithms/Software/HotKnots/
 - Reference: Ren, J., Rastegari, B., Condon, A., & Hoos, H. H. (2005). HotKnots: Heuristic prediction of RNA secondary structures including pseudoknots. RNA, 11(10), 1494-1504.
 
-## Energy Models (HotKnots)
+## Pseudoknot Energy Models
 
 Available energy models:
+
 - `DP09` - Dirks & Pierce 2009 (recommended)
 - `DP03` - Dirks & Pierce 2003
 - `CC06` - Cao & Chen 2006
 - `CC09` - Cao & Chen 2009
 - `RE` - Rivas & Eddy
+
+`DP09`, `CC09`, and `RE` are covered by regression vectors from the original
+`computeEnergy`; `DP03` and `CC06` remain available for compatibility.
 
 ## Requirements
 
