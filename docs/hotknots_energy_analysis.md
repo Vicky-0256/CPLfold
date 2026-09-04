@@ -146,10 +146,14 @@ ln Ωfolded = a ln(L - Lmin + 1) + b(L - Lmin + 1) + c
 中央环为 0 或 1 nt 时还会分别计算 flush 或 mismatch coaxial stacking。这里不是
 只要 coaxial 参数为负就直接采用：原 HotKnots 会比较 coaxial stacking 和占据同一
 junction 的 dangling ends，只有 coaxial 严格更有利时才采用，并阻止这些碱基再次
-作为 dangle 计分；Python 版复现了这一选择与占用规则。以下情况与 HotKnots 一样
-自动退回参数文件中携带的 DP 模型：stem 长度不在 2–12、需要的短环
+作为 dangle 计分；若相邻的嵌套 branch 共享该碱基，则还按
+`simple_dangling_ends=1` 使用 branch 一侧的 dangle 参数。Python 版复现了这些选择
+与占用规则。以下情况与 HotKnots 一样自动退回参数文件中携带的 DP 模型：stem 长度
+不在 2–12、需要的短环
 表项缺失、loop1/loop2 为 0，或拓扑不适合 CC 表。多于两个 band、kissing/chain、
 band span 中有 multiloop 等情况都走该明确定义的回退路径，并不是未计分或近似跳过。
+stem 范围会在访问 2–12 行的 entropy 表或长环公式前检查，越界结构不会因表下标而
+失败。
 
 ## 6. RE（Rivas & Eddy）
 
@@ -204,9 +208,10 @@ energy_no_dangling      = 主能量
 - `DP03`、`DP09`、`CC06`、`CC09`、`RE`；其中 `DP09`、`CC09`、`RE` 是本次
   重点实现和验证的模型。
 
-输入仍须是长度一致的 RNA 序列和成对的 dot-bracket，且所有 pair 必须是 AU、CG 或
-GU canonical pair。`UnsupportedTopologyError` 仅为旧版调用方保留；上述合法复杂拓扑
-不再触发它，CPLfold 也不再以“unsupported”跳过候选。
+输入仍须是长度一致的 RNA 序列和成对的 dot-bracket；与 HotKnots 一样，`.` 和 `_`
+都表示未配对位置。所有 pair 必须是 AU、CG 或 GU canonical pair。
+`UnsupportedTopologyError` 仅为旧版调用方保留；上述合法复杂拓扑不再触发它，
+CPLfold 也不再以“unsupported”跳过候选。
 
 ## 9. 与原程序的验证
 
@@ -251,11 +256,29 @@ mismatch coaxial、2–30 band 随机和链式结构），共 3,303 个模型 ca
 的 dangle 比较。修复并加入最小回归案例后，这 6,606 个数值全部一致，最大绝对误差
 为 `2.08e-5 kcal/mol`。再次运行上述 13 个 ArchiveII 候选的 78 个数值也全部一致。
 
+第三轮审计改用此前未系统覆盖的边界与组合，共检查 6,202 个生成的
+sequence/structure 输入、12,998 个模型 case、25,996 个能量值，包含：任意和紧凑
+crossing 配对图、DP03/DP09/CC06/CC09/RE、CC stem/loop 边界、两张 entropy 表的全部
+stem 行和短环列、长环至 100 nt、2,880 种 flush/mismatch coax junction，以及
+pseudoloop 中嵌套 hairpin/stack/interior/multiloop/pseudoknot。它又检出并修复了三处
+问题：
+
+- CC stem 超过 12 且关联 loop 超过 12 时，在 DP fallback 前误访问长环公式，导致
+  `IndexError`；
+- CC coax 邻接嵌套 branch 时，`simple_dangling_ends` 分支使用了 junction 另一侧的
+  错误碱基，600 个定向 case 中有 21 个产生 `0.5–2.07 kcal/mol` 偏差；
+- pseudoloop 内独立计分的普通 closed region 没有隔离序列左边界，使内部 hairpin
+  读取区间外的 `GGG` 并误加 `0.05 kcal/mol` bonus。
+
+同时补齐了 HotKnots 对 `_` 未配对符号的输入兼容。修复后上述 25,996 个数值全部与
+C oracle 一致，最大绝对误差为 `1.98e-5 kcal/mol`；再跑 ArchiveII 的 78 个数值也
+全部一致。
+
 CC 的 Python double 与原 C++ float 在未格式化内部值上最多约有 `2.4e-5 kcal/mol`
 差异；原 `computeEnergy` 打印精度下结果相同。oracle 源码和二进制未保留在本分支，
 其输出已固化为 `tests/test_hotknots_energy.py` 中的参考向量。
 
-当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，22 个测试仍全部通过。
+当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，26 个测试仍全部通过。
 这证明的是“无 HotKnots 运行时依赖”，而不是“能量实现与 HotKnots 无来源关系”。
 README 示例序列还通过了真实 Numba JIT 的两阶段端到端运行，并生成、计分和排序了
 三个 pseudoknot 候选。日常验证命令为：

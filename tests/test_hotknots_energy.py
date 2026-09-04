@@ -92,6 +92,22 @@ class HotKnotsEnergyTests(unittest.TestCase):
         self.assertAlmostEqual(result["breakdown"]["coaxial"], 0.0, places=8)
         self.assertAlmostEqual(result["breakdown"]["dangling"], -0.51, places=8)
 
+    def test_cc09_coaxial_competition_next_to_nested_hairpin(self):
+        structure = "((.......[[)).(...).]]"
+        fixtures = (
+            # Using the wrong shared nucleotide accepts this -1.10 coaxial
+            # term even though HotKnots' nested-hairpin dangle wins.
+            ("UACCCCUAGUAUAGGAGGUGUG", (13.69695, 14.59695), 0.0),
+            # The converse case guards against rejecting a favourable term.
+            ("GGUCGAACUUAUUGGCCCCCUG", (11.576951, 12.546951), -1.4),
+        )
+        for sequence, expected, coaxial in fixtures:
+            with self.subTest(sequence=sequence):
+                result = self.assert_energy(sequence, structure, "CC09", expected)
+                self.assertAlmostEqual(
+                    result["breakdown"]["coaxial"], coaxial, places=8
+                )
+
     def test_outside_secondary_structure_component(self):
         structure = "[[(((((..]]..)))))...(....)."
         expected = {
@@ -123,6 +139,20 @@ class HotKnotsEnergyTests(unittest.TestCase):
         self.assert_energy(nested_sequence, nested_structure, "DP09", (1.84, 1.84))
         self.assert_energy(nested_sequence, nested_structure, "CC09", (1.84, 1.84))
         self.assert_energy(nested_sequence, nested_structure, "RE", (-0.65, -0.65))
+
+    def test_nested_closed_region_does_not_read_ggg_outside_its_subsequence(self):
+        # The ordinary ((....)) component is scored by SimFold as a separate
+        # closed-region subsequence.  Its nested hairpin must not see the two
+        # G bases immediately preceding that region in the full RNA.
+        sequence = "UGAGUUUUGUGUGCCUGAGAAUACAUUGAUAGGGCACUUCACA"
+        structure = "((.......[[))...................((....)).]]"
+        expected = {
+            "DP09": (6.2466, 7.2466),
+            "CC09": (9.679918, 10.679918),
+        }
+        for model, energy in expected.items():
+            with self.subTest(model=model):
+                self.assert_energy(sequence, structure, model, energy)
 
     def test_multiple_independent_h_type_components(self):
         sequence = "GAGAACACAAGAGAACACAA"
@@ -167,6 +197,24 @@ class HotKnotsEnergyTests(unittest.TestCase):
         self.assertTrue(result["metadata"]["cc_fallback_to_dp"])
         self.assertNotIn("cc_fallback_to_dp", result["breakdown"])
         self.assertAlmostEqual(sum(result["breakdown"].values()), result["energy"], places=8)
+
+    def test_cc_long_stem_falls_back_before_entropy_table_lookup(self):
+        sequence = "CCCCCCCCCCCCCACCAAGGGGGGGGGGGGGAAAAAAAAAAAAAGG"
+        structure = "(((((((((((((.[[..))))))))))))).............]]"
+        expected = {
+            "CC06": (-25.107, -24.007),
+            "CC09": (-20.9512, -20.4912),
+        }
+        for model, energy in expected.items():
+            with self.subTest(model=model):
+                result = self.assert_energy(sequence, structure, model, energy)
+                self.assertTrue(result["metadata"]["cc_fallback_to_dp"])
+
+    def test_hotknots_underscore_is_an_unpaired_symbol(self):
+        sequence = "GAAAC"
+        for structure in ("(...)", "(___)"):
+            with self.subTest(structure=structure):
+                self.assert_energy(sequence, structure, "DP09", (3.69, 3.69))
 
     def test_secondary_structure_nested_inside_pseudoknot_loop(self):
         sequence = "CCACAAAGACCAAAGGAAAGG"

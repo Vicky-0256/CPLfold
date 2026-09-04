@@ -420,7 +420,8 @@ def parse_dot_bracket(structure: str) -> Tuple[List[ParsedPair], List[int]]:
     """Parse the bracket alphabet accepted by HotKnots.
 
     Besides ``()``, ``[]``, ``{}``, and ``<>``, HotKnots uses uppercase and
-    lowercase letters as additional opening/closing levels.
+    lowercase letters as additional opening/closing levels, and treats both
+    ``.`` and ``_`` as unpaired positions.
     """
 
     close_to_open = {")": "(", "]": "[", "}": "{", ">": "<"}
@@ -431,7 +432,7 @@ def parse_dot_bracket(structure: str) -> Tuple[List[ParsedPair], List[int]]:
     pair_table = [-1] * len(structure)
 
     for position, symbol in enumerate(structure):
-        if symbol == ".":
+        if symbol in "._":
             continue
         if symbol in openers:
             stacks[symbol].append(position)
@@ -794,12 +795,14 @@ class _SecondaryStructureEvaluator:
         pair_table: Sequence[int],
         parameters: FM363Parameters,
         include_exterior_ggg: bool = True,
+        context_start: int = 0,
     ):
         self.sequence = sequence
         self.encoded = tuple(NUC_TO_INT[base] for base in sequence)
         self.pair_table = tuple(pair_table)
         self.parameters = parameters
         self.include_exterior_ggg = include_exterior_ggg
+        self.context_start = context_start
 
     @staticmethod
     def _make_forest(
@@ -919,7 +922,8 @@ class _SecondaryStructureEvaluator:
                 self.encoded,
                 i,
                 j,
-                include_ggg=self.include_exterior_ggg or not exterior,
+                include_ggg=(self.include_exterior_ggg or not exterior)
+                and i >= self.context_start + 2,
             )
         if len(node.children) == 1 and not node.children[0].placeholder:
             ip, jp = node.children[0].pair
@@ -1056,6 +1060,8 @@ class _CCParameters:
     @staticmethod
     def entropy_penalty(loop: int, stem: int, table: Mapping[Tuple[int, int], float], formula: Sequence[Sequence[float]]) -> Optional[float]:
         row = stem - 2
+        if loop <= 0 or row < 0 or row >= len(formula[0]):
+            return None
         if loop <= 12:
             value = table.get((row, loop - 1))
             return None if value is None else KB * TEMPERATURE_K * value
@@ -1215,7 +1221,8 @@ class HotKnotsEnergy:
                 cc.fm.dangle_bot[encoded[cp], encoded[dp], encoded[dangle_first]],
             )
             # With HotKnots' simple_dangling_ends=1, an immediately adjacent
-            # pair on the other side owns this shared base instead.
+            # pair on the other side owns its own shared base instead.  The C
+            # expression uses j-1 (outside_second), not dangle_i.
             adjacent = dp - 2
             adjacent_partner = pair_table[adjacent]
             if adjacent_partner >= 0:
@@ -1224,7 +1231,7 @@ class HotKnotsEnergy:
                     cc.fm.dangle_top[
                         encoded[adjacent],
                         encoded[adjacent_partner],
-                        encoded[dangle_first],
+                        encoded[outside_second],
                     ],
                 )
 
@@ -1290,12 +1297,16 @@ class HotKnotsEnergy:
         restrictions: set,
     ) -> Tuple[float, float, Dict[str, float]]:
         stem1, stem2 = len(h_type.stem1), len(h_type.stem2)
-        entropy1 = cc.entropy_penalty(h_type.loop1, stem2, cc.s2_l1, cc.s2_formula)
-        entropy2 = cc.entropy_penalty(h_type.loop2, stem1, cc.s1_l2, cc.s1_formula)
+        # The CC entropy rows exist only for stems 2--12.  HotKnots checks the
+        # applicability bounds before indexing them and otherwise uses DP.
         if (
             stem1 <= 1 or stem2 <= 1 or stem1 > 12 or stem2 > 12
-            or h_type.loop1 == 0 or h_type.loop2 == 0 or entropy1 is None or entropy2 is None
+            or h_type.loop1 == 0 or h_type.loop2 == 0
         ):
+            return self._score_dp(h_type, encoded, pair_table, cc.fm, cc.dp)
+        entropy1 = cc.entropy_penalty(h_type.loop1, stem2, cc.s2_l1, cc.s2_formula)
+        entropy2 = cc.entropy_penalty(h_type.loop2, stem1, cc.s1_l2, cc.s1_formula)
+        if entropy1 is None or entropy2 is None:
             return self._score_dp(h_type, encoded, pair_table, cc.fm, cc.dp)
 
         band = self._band_energy(h_type.stem1, encoded, cc.fm, 1.0, 1.0)
@@ -1421,7 +1432,11 @@ class HotKnotsEnergy:
         # HotKnots' final EnergyDangling scan.  Multiloop dangles are always
         # included by _score_node, matching get_feature_counts_restricted().
         return _SecondaryStructureEvaluator(
-            sequence, pair_table, fm, include_exterior_ggg=False
+            sequence,
+            pair_table,
+            fm,
+            include_exterior_ggg=False,
+            context_start=node.begin,
         ).score(pairs, include_dangles=False, include_exterior_au=True)
 
     def _score_nested_scaffold(
@@ -1438,7 +1453,11 @@ class HotKnotsEnergy:
         )
         placeholders = tuple((pk.begin, pk.end) for pk in pseudoknots)
         value = _SecondaryStructureEvaluator(
-            sequence, pair_table, fm, include_exterior_ggg=False
+            sequence,
+            pair_table,
+            fm,
+            include_exterior_ggg=False,
+            context_start=node.begin,
         ).score(
             actual,
             include_dangles=False,
