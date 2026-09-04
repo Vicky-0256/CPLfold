@@ -223,12 +223,28 @@ GU canonical pair。`UnsupportedTopologyError` 仅为旧版调用方保留；上
 | 三 band kissing/chain、3–5 band 密集链 | 12 个模型向量 | 一致 |
 | 跨 band multiloop（4 种分支布局） | 12 个模型向量 | 一致 |
 | 80 个随机复杂结构，2–10 bands，三模型各比较两列 | 480 个数值 | 一致 |
+| ArchiveII 测试序列上由 CPLfold 生成的 13 个假结候选，DP09/CC09/RE 各比较两列 | 78 个数值 | 一致；最大绝对误差 `1.96e-6 kcal/mol` |
+
+ArchiveII 的输入需要作一个区分：扫描本地 `data_archiveII` 的 30 个
+`train/dev/test.conllx` 文件，共有 39,500 条记录出现（3,435 条唯一序列），其参考
+配对中没有 crossing pair；只扫描十个 `test.conllx` 则是 3,950 条记录，同样没有
+参考假结。因此上表不是拿无假结的参考结构冒充假结测试，而是从各测试集读取真实
+ArchiveII 序列，让 CPLfold 生成 crossing 候选，再把完全相同的 sequence/structure
+分别交给 Python 版和临时编译的原 HotKnots `computeEnergy`。13 个去重候选来自 16S、
+5S、SRP 和 tRNA，覆盖单个 H-type、两个独立 H-type，以及三 band chain/kissing
+拓扑，共比较 39 个模型 case、78 个能量值（总能量和 no-dangling）。
+
+这次数据集差分最初检出一个真实的 `0.5 kcal/mol` 偏差：DP/CC 路径漏加了跨 band
+multiloop 后重新开始的 AU/GU helix-end penalty。原 `Loop::pseudoEnergyDP()` 在
+`multiPseudoEnergyDP()` 之后会给该 band 内侧第一个配对加此项；Python 版现按每个
+spanning multiloop 的 `inner` pair 复现，并把触发问题的 ArchiveII 16S 候选及一个
+最小化案例固化为回归测试。RE 本来就不使用这项，因此未作改变。
 
 CC 的 Python double 与原 C++ float 在未格式化内部值上最多约有 `2.4e-5 kcal/mol`
 差异；原 `computeEnergy` 打印精度下结果相同。oracle 源码和二进制未保留在本分支，
 其输出已固化为 `tests/test_hotknots_energy.py` 中的参考向量。
 
-当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，19 个测试仍全部通过。
+当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，21 个测试仍全部通过。
 这证明的是“无 HotKnots 运行时依赖”，而不是“能量实现与 HotKnots 无来源关系”。
 README 示例序列还通过了真实 Numba JIT 的两阶段端到端运行，并生成、计分和排序了
 三个 pseudoknot 候选。日常验证命令为：

@@ -267,6 +267,45 @@ class HotKnotsEnergyTests(unittest.TestCase):
                 result = self.assert_energy(sequence, structure, model, energy)
                 self.assertIn("band_multiloop", result["breakdown"])
 
+    def test_multiloop_band_restart_gets_terminal_au_penalty(self):
+        # The pair at zero-based positions (6, 20) is the first band-spanning
+        # pair after a multiloop.  HotKnots applies a 0.5 kcal/mol AU penalty
+        # there in addition to the multiloop's own terms.
+        sequence = "CCAAAGAACCAAAGCAACGGUGAAAG"
+        structure = "((...)(.((...)(..[))))...]"
+        expected = {
+            "DP09": (21.4426, 21.9926),
+            "CC09": (21.4426, 21.9926),
+            "RE": (36.288, 37.888),
+        }
+        for model, energy in expected.items():
+            with self.subTest(model=model):
+                result = self.assert_energy(sequence, structure, model, energy)
+                if model in ("DP09", "CC09"):
+                    self.assertAlmostEqual(result["breakdown"]["terminal_au"], 0.5)
+
+    def test_archiveii_sequence_cplfold_pseudoknot_matches_c_oracle(self):
+        # ArchiveII 16s/test.conllx record 75.  ArchiveII's reference pairing
+        # is pseudoknot-free; this crossing structure is a CPLfold candidate
+        # generated from the real sequence.  It exposed the band-restart AU
+        # edge case above during Python/C differential testing.
+        sequence = (
+            "GAAUCGCGAGUAAUCGUAGAUCAUUAGCGCUACGGUGAAGGUAACCUCUAUUGUGCACAC"
+            "AUUGCCCGUCACCUCCGAUAAUAGUAUUGUACAGGAAGAACUAUGGCUACACUUA"
+        )
+        structure = (
+            ".....[[[[(((.((((((.((....(.((.((((((.(((...))).)))))))).)((.]]]]"
+            "..))..(((.(((((....)))))...)))..)).)))))).)))....."
+        )
+        expected = {
+            "DP09": (-7.4588, -5.7388),
+            "CC09": (-7.4588, -5.7388),
+            "RE": (-12.6145, -9.9145),
+        }
+        for model, energy in expected.items():
+            with self.subTest(model=model):
+                self.assert_energy(sequence, structure, model, energy)
+
     def test_invalid_inputs_are_rejected(self):
         with self.assertRaises(ValueError):
             self.evaluator.compute_energy("AAAAA", "(...)", "DP09")

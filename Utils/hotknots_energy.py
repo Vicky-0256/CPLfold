@@ -1456,6 +1456,17 @@ class HotKnotsEnergy:
             fm.au_penalty(encoded[band.pairs[0][0]], encoded[band.pairs[0][1]])
             for band in node.bands
         )
+        # In HotKnots' Loop::pseudoEnergyDP(), a multiloop that interrupts a
+        # band creates another helix end: after scoring multiPseudoEnergyDP(),
+        # the first band-spanning pair inside that multiloop receives an AU/GU
+        # penalty.  In the loop tree this is exactly the inner pair of each
+        # spanning multiloop.  It is separate from both the multiloop's own AU
+        # terms and the outermost-pair penalty for each band above.
+        terminal_au += sum(
+            fm.au_penalty(encoded[loop.inner[0]], encoded[loop.inner[1]])
+            for loop in node.span_loops
+            if loop.is_multi
+        )
         self._add_term(breakdown, "band_energy", reported_band_energy)
         self._add_term(breakdown, "pseudoknot_penalty", penalty)
         self._add_term(breakdown, "terminal_au", terminal_au)
