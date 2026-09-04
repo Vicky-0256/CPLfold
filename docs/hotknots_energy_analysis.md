@@ -210,6 +210,9 @@ energy_no_dangling      = 主能量
 
 输入仍须是长度一致的 RNA 序列和成对的 dot-bracket；与 HotKnots 一样，`.` 和 `_`
 都表示未配对位置。所有 pair 必须是 AU、CG 或 GU canonical pair。
+每个 hairpin 必须至少包含 3 个未配对碱基。原 C 程序对 0--2 nt 的非法 hairpin
+返回约 `16000 kcal/mol` 的内部 `INF` 哨兵；Python API 明确抛出 `ValueError`，避免把
+哨兵误当成可排序的物理能量。因此下文的数值一致性结论针对上述合法输入域。
 `UnsupportedTopologyError` 仅为旧版调用方保留；上述合法复杂拓扑不再触发它，
 CPLfold 也不再以“unsupported”跳过候选。
 
@@ -273,6 +276,18 @@ pseudoloop 中嵌套 hairpin/stack/interior/multiloop/pseudoknot。它又检出�
 同时补齐了 HotKnots 对 `_` 未配对符号的输入兼容。修复后上述 25,996 个数值全部与
 C oracle 一致，最大绝对误差为 `1.98e-5 kcal/mol`；再跑 ArchiveII 的 78 个数值也
 全部一致。
+
+第四轮审计继续补齐此前只做过随机抽样的参数和拓扑空间，共新增 22,882 个合法
+sequence/structure 输入、56,022 个模型 case、112,044 个
+`energy`/`energy_no_dangling` 数值：完整枚举 1x2/2x1 内环的 4,608 种组合和 2x2
+内环的 9,216 种组合（DP09 与 RE；CC09 的前 363 个普通热力学参数与 DP09 相同），
+完整枚举 triloop/tetraloop、hairpin mismatch、外部 dangle 及单碱基 dangle 竞争，
+并系统覆盖 GAIL、左右 bulge、长环外推和 multiloop dangle。拓扑部分另检查了 600 个
+允许相邻 paired endpoint 的随机 crossing 图（五模型），以及长度 7--11 的全部
+3,420 个合法 crossing matching（三模型）。112,044 个数值全部一致，breakdown 求和
+不变量全部成立，最大绝对误差为 `2.1362e-5 kcal/mol`。最后再次重放 ArchiveII 的
+13 个候选，78 个数值仍全部一致，最大绝对误差为 `2.16e-6 kcal/mol`。本轮没有发现
+合法输入上的新公式、参数索引或 Loop/Bands 拓扑偏差。
 
 CC 的 Python double 与原 C++ float 在未格式化内部值上最多约有 `2.4e-5 kcal/mol`
 差异；原 `computeEnergy` 打印精度下结果相同。oracle 源码和二进制未保留在本分支，

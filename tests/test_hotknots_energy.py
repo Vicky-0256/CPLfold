@@ -369,6 +369,14 @@ class HotKnotsEnergyTests(unittest.TestCase):
             self.evaluator.compute_energy("AAAAA", "(...)", "DP09")
         with self.assertRaises(ValueError):
             self.evaluator.compute_energy("GAAAC", "((...)", "DP09")
+        # HotKnots' C code emits its 16000 kcal/mol INF sentinel for these
+        # non-physical loops.  The Python API deliberately rejects them so the
+        # sentinel cannot be mistaken for a meaningful free energy.
+        short_hairpins = (("GC", "()"), ("GAC", "(.)"), ("GAAC", "(..)"))
+        for sequence, structure in short_hairpins:
+            with self.subTest(structure=structure):
+                with self.assertRaisesRegex(ValueError, "fewer than three"):
+                    self.evaluator.compute_energy(sequence, structure, "DP09")
 
 
 if __name__ == "__main__":

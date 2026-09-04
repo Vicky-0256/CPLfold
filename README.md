@@ -132,6 +132,12 @@ kissing pseudoknots, and multiloops spanning a band. DP09, CC09, and RE follow
 the original Loop/Bands scoring behavior; CC uses its defined DP fallback for
 topologies outside its two-stem entropy table.
 
+Numerical parity applies to valid canonical RNA structures, including a minimum
+of three unpaired nucleotides in every hairpin. For a shorter, non-physical
+hairpin the original C program exposes its `16000 kcal/mol` internal `INF`
+sentinel; the Python API raises `ValueError` instead of treating that sentinel
+as a meaningful energy.
+
 See [the port, provenance, and formula analysis](docs/hotknots_energy_analysis.md)
 for the source-to-Python relationship, parameter layout, DP09/CC09/RE equations,
 supported topology, and reference validation results.
