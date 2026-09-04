@@ -1179,28 +1179,115 @@ class HotKnotsEnergy:
             "band_energy": band, "pseudoknot_penalty": penalty, "terminal_au": au
         }
 
-    def _cc_coaxial(self, h_type: _HType, encoded: Sequence[int], cc: _CCParameters) -> float:
+    def _cc_coaxial(
+        self,
+        h_type: _HType,
+        encoded: Sequence[int],
+        pair_table: Sequence[int],
+        cc: _CCParameters,
+        restrictions: set,
+    ) -> float:
         ap, bp = h_type.stem1[-1]
         cp, dp = h_type.stem2[-1]
+
+        # LEcoax_stack_energy_{flush_b,mismatch} compares a possible coaxial
+        # stack with the dangling ends that would otherwise occupy the same
+        # junction.  A non-zero coaxial term is used only when it is strictly
+        # more favourable.  The two outside dangles can already have been
+        # reserved by a nested loop, so mirror cannot_add_dangling as well.
+        outside_first = ap + 1
+        outside_second = dp - 1
+        dangle_first = (
+            outside_first
+            if pair_table[outside_first] < 0 and outside_first not in restrictions
+            else None
+        )
+        dangle_second = (
+            outside_second
+            if pair_table[outside_second] < 0 and outside_second not in restrictions
+            else None
+        )
+
+        dangle_energy_first = 0.0
+        if dangle_first is not None:
+            dangle_energy_first = min(
+                0.0,
+                cc.fm.dangle_bot[encoded[cp], encoded[dp], encoded[dangle_first]],
+            )
+            # With HotKnots' simple_dangling_ends=1, an immediately adjacent
+            # pair on the other side owns this shared base instead.
+            adjacent = dp - 2
+            adjacent_partner = pair_table[adjacent]
+            if adjacent_partner >= 0:
+                dangle_energy_first = min(
+                    0.0,
+                    cc.fm.dangle_top[
+                        encoded[adjacent],
+                        encoded[adjacent_partner],
+                        encoded[dangle_first],
+                    ],
+                )
+
+        dangle_energy_second = 0.0
+        if dangle_second is not None:
+            dangle_energy_second = min(
+                0.0,
+                cc.fm.dangle_top[encoded[ap], encoded[bp], encoded[dangle_second]],
+            )
+
         if h_type.loop3 == 0:
-            return min(0.0, cc.coax_flush[encoded[cp], encoded[dp], encoded[bp], encoded[ap]])
-        if h_type.loop3 != 1:
+            coaxial = cc.coax_flush[
+                encoded[cp], encoded[dp], encoded[bp], encoded[ap]
+            ]
+            competing_dangles = dangle_energy_first + dangle_energy_second
+        elif h_type.loop3 == 1:
+            middle = cp + 1
+            coaxial_first = 0.0
+            if dangle_first is not None:
+                coaxial_first = (
+                    cc.coax_m1[
+                        encoded[cp], encoded[dp], encoded[middle], encoded[dangle_first]
+                    ]
+                    + cc.coax_m2[
+                        encoded[middle], encoded[dangle_first], encoded[bp], encoded[ap]
+                    ]
+                )
+            coaxial_second = 0.0
+            if dangle_second is not None:
+                coaxial_second = (
+                    cc.coax_m1[
+                        encoded[ap], encoded[bp], encoded[dangle_second], encoded[middle]
+                    ]
+                    + cc.coax_m2[
+                        encoded[cp], encoded[dp], encoded[middle], encoded[dangle_second]
+                    ]
+                )
+            coaxial = min(coaxial_first, coaxial_second)
+            middle_dangle = min(
+                0.0,
+                cc.fm.dangle_top[encoded[cp], encoded[dp], encoded[middle]],
+            )
+            competing_dangles = (
+                middle_dangle + dangle_energy_first + dangle_energy_second
+            )
+        else:
             return 0.0
-        middle = cp + 1
-        dangle_i = ap + 1
-        dangle_ip = dp - 1
-        first = (
-            cc.coax_m1[encoded[cp], encoded[dp], encoded[middle], encoded[dangle_i]]
-            + cc.coax_m2[encoded[middle], encoded[dangle_i], encoded[bp], encoded[ap]]
-        )
-        second = (
-            cc.coax_m1[encoded[ap], encoded[bp], encoded[dangle_ip], encoded[middle]]
-            + cc.coax_m2[encoded[cp], encoded[dp], encoded[middle], encoded[dangle_ip]]
-        )
-        return min(0.0, first, second)
+
+        if competing_dangles <= coaxial or coaxial >= INF:
+            return 0.0
+        if dangle_first is not None:
+            restrictions.add(dangle_first)
+        if dangle_second is not None:
+            restrictions.add(dangle_second)
+        return coaxial
 
     def _score_cc(
-        self, h_type: _HType, encoded: Sequence[int], pair_table: Sequence[int], cc: _CCParameters
+        self,
+        h_type: _HType,
+        encoded: Sequence[int],
+        pair_table: Sequence[int],
+        cc: _CCParameters,
+        restrictions: set,
     ) -> Tuple[float, float, Dict[str, float]]:
         stem1, stem2 = len(h_type.stem1), len(h_type.stem2)
         entropy1 = cc.entropy_penalty(h_type.loop1, stem2, cc.s2_l1, cc.s2_formula)
@@ -1214,7 +1301,7 @@ class HotKnotsEnergy:
         band = self._band_energy(h_type.stem1, encoded, cc.fm, 1.0, 1.0)
         band += self._band_energy(h_type.stem2, encoded, cc.fm, 1.0, 1.0)
         assembly = KB * TEMPERATURE_K * math.log(9.0)
-        coaxial = self._cc_coaxial(h_type, encoded, cc)
+        coaxial = self._cc_coaxial(h_type, encoded, pair_table, cc, restrictions)
         au = self._h_terminal_au(h_type, encoded, cc.fm)
         no_dangling = band + assembly + float(entropy1) + float(entropy2) + coaxial + au
         return no_dangling, no_dangling, {
@@ -1582,7 +1669,13 @@ class HotKnotsEnergy:
             )
 
         h_type = self._as_h_type(node)
-        _, local, terms = self._score_cc(h_type, tuple(NUC_TO_INT[b] for b in sequence), pair_table, cc)
+        _, local, terms = self._score_cc(
+            h_type,
+            tuple(NUC_TO_INT[b] for b in sequence),
+            pair_table,
+            cc,
+            restrictions,
+        )
         if "assembly" not in terms:
             metadata["cc_fallback_to_dp"] = True
             metadata["cc_fallback_components"] = int(

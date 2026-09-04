@@ -143,8 +143,11 @@ ln Ωfolded = a ln(L - Lmin + 1) + b(L - Lmin + 1) + c
 ΔGL        = kBT (ln Ωcoil - ln Ωfolded)
 ```
 
-中央环为 0 或 1 nt 时还会分别计算 flush 或 mismatch coaxial stacking。以下情况与
-HotKnots 一样自动退回参数文件中携带的 DP 模型：stem 长度不在 2–12、需要的短环
+中央环为 0 或 1 nt 时还会分别计算 flush 或 mismatch coaxial stacking。这里不是
+只要 coaxial 参数为负就直接采用：原 HotKnots 会比较 coaxial stacking 和占据同一
+junction 的 dangling ends，只有 coaxial 严格更有利时才采用，并阻止这些碱基再次
+作为 dangle 计分；Python 版复现了这一选择与占用规则。以下情况与 HotKnots 一样
+自动退回参数文件中携带的 DP 模型：stem 长度不在 2–12、需要的短环
 表项缺失、loop1/loop2 为 0，或拓扑不适合 CC 表。多于两个 band、kissing/chain、
 band span 中有 multiloop 等情况都走该明确定义的回退路径，并不是未计分或近似跳过。
 
@@ -223,7 +226,7 @@ GU canonical pair。`UnsupportedTopologyError` 仅为旧版调用方保留；上
 | 三 band kissing/chain、3–5 band 密集链 | 12 个模型向量 | 一致 |
 | 跨 band multiloop（4 种分支布局） | 12 个模型向量 | 一致 |
 | 80 个随机复杂结构，2–10 bands，三模型各比较两列 | 480 个数值 | 一致 |
-| ArchiveII 测试序列上由 CPLfold 生成的 13 个假结候选，DP09/CC09/RE 各比较两列 | 78 个数值 | 一致；最大绝对误差 `1.96e-6 kcal/mol` |
+| ArchiveII 测试序列上由 CPLfold 生成的 13 个假结候选，DP09/CC09/RE 各比较两列 | 78 个数值 | 一致；最大绝对误差 `2.16e-6 kcal/mol` |
 
 ArchiveII 的输入需要作一个区分：扫描本地 `data_archiveII` 的 30 个
 `train/dev/test.conllx` 文件，共有 39,500 条记录出现（3,435 条唯一序列），其参考
@@ -240,11 +243,19 @@ multiloop 后重新开始的 AU/GU helix-end penalty。原 `Loop::pseudoEnergyDP
 spanning multiloop 的 `inner` pair 复现，并把触发问题的 ArchiveII 16S 候选及一个
 最小化案例固化为回归测试。RE 本来就不使用这项，因此未作改变。
 
+随后又使用保留更多输出精度的临时 x86-64 oracle 做了第二轮独立差分。审计覆盖
+1,839 个生成的 sequence/structure 输入（普通 loop 与 FM363 参数组合、CC flush/
+mismatch coaxial、2–30 band 随机和链式结构），共 3,303 个模型 case、6,606 个
+`energy`/`energy_no_dangling` 数值。它检出两个 CC09 case（偏差分别为 `0.68` 和
+`0.85 kcal/mol`）：旧 Python 版看到负 coaxial 参数便直接采用，没有先与同 junction
+的 dangle 比较。修复并加入最小回归案例后，这 6,606 个数值全部一致，最大绝对误差
+为 `2.08e-5 kcal/mol`。再次运行上述 13 个 ArchiveII 候选的 78 个数值也全部一致。
+
 CC 的 Python double 与原 C++ float 在未格式化内部值上最多约有 `2.4e-5 kcal/mol`
 差异；原 `computeEnergy` 打印精度下结果相同。oracle 源码和二进制未保留在本分支，
 其输出已固化为 `tests/test_hotknots_energy.py` 中的参考向量。
 
-当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，21 个测试仍全部通过。
+当前分支自身不含 `Utils/HotKnots_v2.0`；删除该目录后，22 个测试仍全部通过。
 这证明的是“无 HotKnots 运行时依赖”，而不是“能量实现与 HotKnots 无来源关系”。
 README 示例序列还通过了真实 Numba JIT 的两阶段端到端运行，并生成、计分和排序了
 三个 pseudoknot 候选。日常验证命令为：

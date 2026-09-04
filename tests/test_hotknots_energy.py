@@ -82,6 +82,16 @@ class HotKnotsEnergyTests(unittest.TestCase):
         result = self.assert_energy(sequence, structure, "CC09", (1.54534, 2.02534))
         self.assertAlmostEqual(result["breakdown"]["coaxial"], -4.21, places=6)
 
+    def test_cc09_flush_coaxial_competes_with_dangles(self):
+        # HotKnots uses a coaxial stack only when it beats the dangling ends
+        # that occupy the same junction.  The raw flush parameter is -0.68,
+        # but the competing dangles are more favourable for this sequence.
+        sequence = "ACCAGCACUGUCUACUUGG"
+        structure = "((.....[[))......]]"
+        result = self.assert_energy(sequence, structure, "CC09", (6.60207, 7.11207))
+        self.assertAlmostEqual(result["breakdown"]["coaxial"], 0.0, places=8)
+        self.assertAlmostEqual(result["breakdown"]["dangling"], -0.51, places=8)
+
     def test_outside_secondary_structure_component(self):
         structure = "[[(((((..]]..)))))...(....)."
         expected = {
