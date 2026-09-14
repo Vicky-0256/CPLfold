@@ -253,7 +253,8 @@ def compute_energy_hotknots(seq: str, structure: str, hk: HotKnotsEnergy,
 
 
 def output_results(all_structures: List[Dict], seq: str,
-                   output_file: Optional[str], verbose: bool = True) -> None:
+                   output_file: Optional[str], verbose: bool = True,
+                   allow_pseudoknot: bool = True) -> None:
     """
     Output results to stdout and optionally to file.
 
@@ -262,6 +263,7 @@ def output_results(all_structures: List[Dict], seq: str,
         seq: Original RNA sequence
         output_file: Optional file path for output
         verbose: Whether to print to stdout
+        allow_pseudoknot: Whether pseudoknot candidates were searched
     """
     lines = []
 
@@ -274,16 +276,22 @@ def output_results(all_structures: List[Dict], seq: str,
     phase1_structs = [s for s in all_structures if s['type'] == 'phase1']
     pk_structs = [s for s in all_structures if s['type'] == 'pseudoknot']
 
-    lines.append(f"Phase 1 Structures: {len(phase1_structs)}")
-    lines.append(f"Pseudoknot Structures: {len(pk_structs)}")
+    secondary_label = "Phase 1 Structures" if allow_pseudoknot else "Secondary Structures"
+    secondary_id = "P1" if allow_pseudoknot else "S"
+
+    lines.append(f"{secondary_label}: {len(phase1_structs)}")
+    if allow_pseudoknot:
+        lines.append(f"Pseudoknot Structures: {len(pk_structs)}")
+    else:
+        lines.append("Pseudoknot Structures: disabled")
     lines.append("")
 
-    # Output Phase 1 structures
+    # Output ordinary secondary structures
     if phase1_structs:
-        lines.append("--- Phase 1 Structures ---")
+        lines.append(f"--- {secondary_label} ---")
         for i, s in enumerate(phase1_structs, 1):
             energy_str = f"{s['energy']:.2f}" if s['energy'] is not None else "N/A"
-            lines.append(f"P1-{i}: {s['structure']}")
+            lines.append(f"{secondary_id}-{i}: {s['structure']}")
             lines.append(f"       Energy: {energy_str} kcal/mol")
         lines.append("")
 
@@ -375,7 +383,8 @@ def two_phase_pseudoknot_fold(seq: str,
                                lv: bool = True,
                                bonus_matrix = None,
                                alpha: float = 0.0,
-                               beta: float = 0.0) -> List[Dict]:
+                               beta: float = 0.0,
+                               allow_pseudoknot: bool = True) -> List[Dict]:
     """
     Main function: Two-phase pseudoknot prediction algorithm.
 
@@ -395,6 +404,9 @@ def two_phase_pseudoknot_fold(seq: str,
               the sorting energy = pseudoknot_energy + beta * phase1_energy.
               Since RNA energies are negative, this makes pseudoknots more
               favorable in ranking, improving recall of pseudoknot structures.
+        allow_pseudoknot: Whether to run Phase 2 and return pseudoknot candidates.
+                         Defaults to True. When False, only Phase 1 secondary
+                         structures are generated and returned.
 
     Returns:
         List of structure dictionaries sorted by effective energy
@@ -403,23 +415,26 @@ def two_phase_pseudoknot_fold(seq: str,
     seq = seq.upper().replace('T', 'U')
 
     if verbose:
-        print(f"Running Two-Phase Pseudoknot Algorithm...")
+        print("Running CPLfold RNA structure prediction...")
         print(f"Sequence length: {len(seq)}")
         print(f"Beam size: {beam_size}")
         print(f"Energy delta: {energy_delta}")
         print(f"Energy model: {energy_model}")
         print(f"LinearFold mode: {'Vienna' if lv else 'CONTRAfold'}")
+        print(f"Structure mode: {'Pseudoknot-enabled' if allow_pseudoknot else 'Pseudoknot-free'}")
         if bonus_matrix is not None:
             print(f"Using bonus matrix with alpha: {alpha}")
-        if beta != 0.0:
+        if allow_pseudoknot and beta != 0.0:
             print(f"Pseudoknot energy bonus (beta): {beta}")
+        elif not allow_pseudoknot and beta != 0.0:
+            print("Ignoring beta because pseudoknot generation is disabled")
         print("")
 
-    # Initialize parser with constraints enabled
+    # Constraints are needed only by the pseudoknot-enabled Phase 2.
     parser = BeamCKYParserHyper(
         beam_size=beam_size,
         lv=lv,  # Vienna mode (True) or CONTRAfold mode (False)
-        use_constraints=True,
+        use_constraints=allow_pseudoknot,
         is_verbose=False
     )
     
@@ -470,77 +485,78 @@ def two_phase_pseudoknot_fold(seq: str,
         if verbose:
             print(f"  Energy: {energy1:.2f} kcal/mol")
 
-        # Phase 2: Generate constraint and fold
-        constraint = structure_to_constraint(struct1)
-
-        if verbose:
-            print(f"  Phase 2: Folding with constraints...")
-            print(f"  Constraint: {constraint}")
-
-        struct2, score2 = phase2_fold(seq, parser, constraint)
-
-        if struct2 and has_new_pairs(struct2):
-            if verbose:
-                print(f"  Phase 2 structure: {struct2}")
-
-            # Get pairs for pseudoknot check
-            pairs1 = get_pairs_from_structure(struct1)
-            pairs2 = get_pairs_from_structure(struct2)
+        if allow_pseudoknot:
+            # Phase 2: Generate constraint and fold
+            constraint = structure_to_constraint(struct1)
 
             if verbose:
-                print(f"  Phase 1 pairs: {len(pairs1)}, Phase 2 pairs: {len(pairs2)}")
+                print(f"  Phase 2: Folding with constraints...")
+                print(f"  Constraint: {constraint}")
 
-            # Check if it forms a pseudoknot
-            if is_pseudoknot(pairs1, pairs2):
-                # Merge structures
-                merged = merge_structures(struct1, struct2)
+            struct2, score2 = phase2_fold(seq, parser, constraint)
+
+            if struct2 and has_new_pairs(struct2):
+                if verbose:
+                    print(f"  Phase 2 structure: {struct2}")
+
+                # Get pairs for pseudoknot check
+                pairs1 = get_pairs_from_structure(struct1)
+                pairs2 = get_pairs_from_structure(struct2)
 
                 if verbose:
-                    print(f"  Merged structure: {merged}")
+                    print(f"  Phase 1 pairs: {len(pairs1)}, Phase 2 pairs: {len(pairs2)}")
 
-                if (
-                    merged
-                    and merged not in seen_structures
-                ):
-                    # Calculate merged structure energy
-                    energy_merged = compute_energy_hotknots(seq, merged, hk, energy_model)
-                    seen_structures.add(merged)
-
-                    # Calculate effective energy for sorting
-                    # effective_energy = pseudoknot_energy + beta * phase1_energy
-                    # Since energies are negative, this makes pseudoknots more favorable
-                    effective_energy = energy_merged + beta * energy1
-
-                    all_structures.append({
-                        'structure': merged,
-                        'energy': energy_merged,
-                        'effective_energy': effective_energy,
-                        'type': 'pseudoknot',
-                        'phase1_struct': struct1,
-                        'phase1_energy': energy1,
-                        'phase2_struct': struct2,
-                        'score': score1 + score2
-                    })
+                # Check if it forms a pseudoknot
+                if is_pseudoknot(pairs1, pairs2):
+                    # Merge structures
+                    merged = merge_structures(struct1, struct2)
 
                     if verbose:
-                        energy_str = f"{energy_merged:.2f}" if energy_merged is not None else "N/A"
-                        print(f"  ** Pseudoknot found! **")
-                        print(f"  Pseudoknot energy: {energy_str} kcal/mol")
-                        if beta != 0.0 and effective_energy is not None:
-                            print(f"  Effective energy (with beta={beta}): {effective_energy:.2f} kcal/mol")
-                elif merged in seen_structures:
+                        print(f"  Merged structure: {merged}")
+
+                    if (
+                        merged
+                        and merged not in seen_structures
+                    ):
+                        # Calculate merged structure energy
+                        energy_merged = compute_energy_hotknots(seq, merged, hk, energy_model)
+                        seen_structures.add(merged)
+
+                        # Calculate effective energy for sorting
+                        # effective_energy = pseudoknot_energy + beta * phase1_energy
+                        # Since energies are negative, this makes pseudoknots more favorable
+                        effective_energy = energy_merged + beta * energy1
+
+                        all_structures.append({
+                            'structure': merged,
+                            'energy': energy_merged,
+                            'effective_energy': effective_energy,
+                            'type': 'pseudoknot',
+                            'phase1_struct': struct1,
+                            'phase1_energy': energy1,
+                            'phase2_struct': struct2,
+                            'score': score1 + score2
+                        })
+
+                        if verbose:
+                            energy_str = f"{energy_merged:.2f}" if energy_merged is not None else "N/A"
+                            print(f"  ** Pseudoknot found! **")
+                            print(f"  Pseudoknot energy: {energy_str} kcal/mol")
+                            if beta != 0.0 and effective_energy is not None:
+                                print(f"  Effective energy (with beta={beta}): {effective_energy:.2f} kcal/mol")
+                    elif merged in seen_structures:
+                        if verbose:
+                            print(f"  (Duplicate structure, skipped)")
+                else:
                     if verbose:
-                        print(f"  (Duplicate structure, skipped)")
+                        print(f"  No pseudoknot formed (pairs don't cross)")
             else:
                 if verbose:
-                    print(f"  No pseudoknot formed (pairs don't cross)")
-        else:
-            if verbose:
-                if struct2:
-                    print(f"  Phase 2 structure: {struct2}")
-                    print(f"  No new pairs found in Phase 2 (all positions unpaired)")
-                else:
-                    print(f"  Phase 2 folding returned no structure")
+                    if struct2:
+                        print(f"  Phase 2 structure: {struct2}")
+                        print(f"  No new pairs found in Phase 2 (all positions unpaired)")
+                    else:
+                        print(f"  Phase 2 folding returned no structure")
 
     # Sort by effective energy (None values go to end)
     # For pseudoknots with beta > 0, effective_energy = energy + beta * phase1_energy
@@ -550,7 +566,13 @@ def two_phase_pseudoknot_fold(seq: str,
     # Output results
     if verbose:
         print("\n")
-    output_results(all_structures, seq, output_file, verbose)
+    output_results(
+        all_structures,
+        seq,
+        output_file,
+        verbose,
+        allow_pseudoknot=allow_pseudoknot,
+    )
 
     return all_structures
 
@@ -558,13 +580,14 @@ def two_phase_pseudoknot_fold(seq: str,
 def main():
     """Command line interface."""
     parser = argparse.ArgumentParser(
-        description='Two-Phase LinearFold Pseudoknot Prediction',
+        description='LinearFold RNA structure prediction with optional pseudoknots',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG
   python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -o results.txt
   python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG -b 200 -d 10.0
+  python CPLfold.py -s GGCGCGGCACCGUCCGCGGAACAAACGG --no-pseudoknot
 
 Energy Models:
   DP03 - Dirks & Pierce 2003
@@ -586,6 +609,11 @@ Beta Parameter:
 
   Example: beta=0.5, phase1=-30, pseudoknot=-25
     effective = -25 + 0.5*(-30) = -40 kcal/mol
+
+Structure modes:
+  By default, Phase 2 searches for pseudoknots.
+  Use --no-pseudoknot to stop after Phase 1 and output only
+  pseudoknot-free secondary structures. In that mode, --beta is ignored.
         """
     )
 
@@ -608,6 +636,9 @@ Beta Parameter:
                         help='Pseudoknot energy bonus factor (default: 0.0). '
                              'For pseudoknots, effective_energy = pk_energy + beta * phase1_energy. '
                              'Higher beta favors pseudoknots in ranking (improves recall).')
+    parser.add_argument('--no-pseudoknot', action='store_true',
+                        help='Only generate pseudoknot-free secondary structures; '
+                             'skip Phase 2 (default: pseudoknots enabled)')
     parser.add_argument('-q', '--quiet', action='store_true',
                         help='Suppress verbose output')
 
@@ -623,15 +654,12 @@ Beta Parameter:
         energy_model=args.model,
         output_file=args.output,
         verbose=not args.quiet,
-        beta=args.beta
+        beta=args.beta,
+        allow_pseudoknot=not args.no_pseudoknot
     )
 
-    # Return exit code based on whether pseudoknots were found
-    pk_count = sum(1 for r in results if r['type'] == 'pseudoknot')
-    if pk_count > 0:
-        return 0
-    else:
-        return 1
+    # Any successfully generated structure is a successful prediction.
+    return 0 if results else 1
 
 
 if __name__ == '__main__':

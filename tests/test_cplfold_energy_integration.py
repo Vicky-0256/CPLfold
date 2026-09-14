@@ -80,6 +80,29 @@ class CPLfoldEnergyIntegrationTests(unittest.TestCase):
         self.assertEqual(pseudoknot["energy"], -2.0)
         self.assertTrue(all(item["energy"] is not None for item in results))
 
+    def test_pseudoknot_free_mode_skips_phase2(self):
+        with mock.patch.object(self.cplfold, "BeamCKYParserHyper") as parser_cls, mock.patch.object(
+            self.cplfold, "HotKnotsEnergy", return_value=_SelectiveEvaluator()
+        ), mock.patch.object(
+            self.cplfold, "phase1_fold", return_value=[("(...)", -1.0)]
+        ), mock.patch.object(self.cplfold, "phase2_fold") as phase2:
+            results = self.cplfold.two_phase_pseudoknot_fold(
+                "G" * 5,
+                verbose=False,
+                allow_pseudoknot=False,
+                beta=0.5,
+            )
+
+        phase2.assert_not_called()
+        parser_cls.assert_called_once_with(
+            beam_size=100,
+            lv=True,
+            use_constraints=False,
+            is_verbose=False,
+        )
+        self.assertEqual([item["type"] for item in results], ["phase1"])
+        self.assertEqual(results[0]["structure"], "(...)")
+
 
 if __name__ == "__main__":
     unittest.main()

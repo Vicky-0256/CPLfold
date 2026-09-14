@@ -1,6 +1,6 @@
 # CPLfold: Chimeric and Pseudoknot-capable Linear-time RNA Secondary Structure Prediction
 
-Two-phase pseudoknot prediction algorithm using LinearFold with experimental COMRADES/PARIS data support.
+Two-phase pseudoknot prediction algorithm using LinearFold with experimental COMRADES/PARIS data support. Pseudoknot generation is enabled by default, with an option to output only pseudoknot-free secondary structures.
 
 Energy scoring is provided by a Python port/refactoring built from the HotKnots
 2.0 energy-calculation source code and parameter files. CPLfold does not use the
@@ -46,6 +46,7 @@ CPLfold/
 | `max_phase1` | Maximum Phase 1 structures | 10 |
 | `alpha` | Bonus matrix scaling factor | 0.0 |
 | `beta` | Pseudoknot ranking bonus | 0.0 |
+| `allow_pseudoknot` | Enable Phase 2 pseudoknot generation | `True` |
 
 ### Beta Parameter
 
@@ -69,6 +70,9 @@ python CPLfold.py -s SEQUENCE -b 200 -d 10.0 --beta 0.3
 
 # With output file
 python CPLfold.py -s SEQUENCE -o results.txt
+
+# Only output pseudoknot-free secondary structures
+python CPLfold.py -s SEQUENCE --no-pseudoknot
 ```
 
 ### Python API
@@ -78,6 +82,12 @@ from CPLfold import two_phase_pseudoknot_fold
 
 # Basic usage
 results = two_phase_pseudoknot_fold(sequence, beam_size=100)
+
+# Skip Phase 2 and output only pseudoknot-free structures
+results = two_phase_pseudoknot_fold(
+    sequence,
+    allow_pseudoknot=False
+)
 
 # With PARIS bonus matrix
 import numpy as np
