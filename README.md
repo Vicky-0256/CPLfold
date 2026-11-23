@@ -1,5 +1,17 @@
 # CPLfold: Chimeric and Pseudoknot-capable Linear-time RNA Secondary Structure Prediction
 
+> [!IMPORTANT]
+> **CPLfold has moved into [Hyb2](https://github.com/Vicky-0256/hyb2).**
+> CPLfold is now developed as part of Hyb2, in
+> [`third_party/cplfold/`](https://github.com/Vicky-0256/hyb2/tree/CPLcofold/third_party/cplfold)
+> (currently on the `CPLcofold` branch). This repository is no longer updated;
+> please open issues and pull requests in Hyb2.
+>
+> The Hyb2 version adds CPLcofold (two-strand prediction) and the `bin/cplfold`
+> command-line tool, and is shared by the Hyb2 command line, website and desktop
+> app. Its licence terms are in `LICENSE` and `THIRD_PARTY_NOTICES.md` in that
+> directory.
+
 Two-phase pseudoknot prediction algorithm using LinearFold with experimental COMRADES/PARIS data support.
 
 Energy scoring is provided by a Python port/refactoring built from the HotKnots
